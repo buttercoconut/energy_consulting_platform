@@ -1,53 +1,34 @@
-"""API routes for energy data and analysis."""
-
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
-from sqlalchemy import func
-
-from app.api.schemas import (
-    EnergyDataCreate,
-    EnergyData,
-    EnergyDataList,
-    AnalysisResult,
-    AnalysisResultList,
-)
-from app.services.analysis_service import analyze_energy_data
-from app.services.data_collection_service import get_energy_data
-from app.config import settings
+from fastapi import APIRouter, Depends
+from ..services.data_collection_service import DataCollectionService
+from ..services.analysis_service import AnalysisService
+from ..services.consulting_service import ConsultingService
+from ..api.schemas import EnergyDataCreate, EnergyDataResponse, ReportCreate, ReportResponse
 
 router = APIRouter()
 
-# Dependency for DB session (placeholder, actual implementation omitted)
-async def get_db() -> AsyncSession:
-    # In real code, return an async session from a sessionmaker
-    raise NotImplementedError
+# Dependency injection for services
 
-@router.post("/energy", response_model=EnergyData, status_code=status.HTTP_201_CREATED)
-async def create_energy_data(
-    payload: EnergyDataCreate,
-    db: AsyncSession = Depends(get_db),
-):
-    # Persist to DB (simplified)
-    # In real implementation, use ORM model
-    return EnergyData(id=1, **payload.dict())
+def get_data_collection_service():
+    return DataCollectionService()
 
-@router.get("/energy", response_model=EnergyDataList)
-async def list_energy_data(
-    building_id: int,
-    start: str,
-    end: str,
-    db: AsyncSession = Depends(get_db),
-):
-    # Query DB for energy data (simplified)
-    return EnergyDataList(items=[], total=0)
+def get_analysis_service():
+    return AnalysisService()
 
-@router.get("/analysis", response_model=AnalysisResultList)
-async def get_analysis(
-    building_id: int,
-    start: str,
-    end: str,
-    db: AsyncSession = Depends(get_db),
-):
-    result = await analyze_energy_data(building_id, start, end)
-    return AnalysisResultList(items=[result], total=1)
+def get_consulting_service():
+    return ConsultingService()
+
+@router.post("/energy-data", response_model=EnergyDataResponse)
+async def create_energy_data(data: EnergyDataCreate, service: DataCollectionService = Depends(get_data_collection_service)):
+    return await service.save_energy_data(data)
+
+@router.get("/energy-data/{building_id}", response_model=list[EnergyDataResponse])
+async def get_energy_data(building_id: int, service: DataCollectionService = Depends(get_data_collection_service)):
+    return await service.get_energy_data_by_building(building_id)
+
+@router.post("/analysis", response_model=list[ReportResponse])
+async def analyze_energy(building_id: int, service: AnalysisService = Depends(get_analysis_service)):
+    return await service.run_analysis(building_id)
+
+@router.post("/report", response_model=ReportResponse)
+async def create_report(report: ReportCreate, service: ConsultingService = Depends(get_consulting_service)):
+    return await service.generate_report(report)

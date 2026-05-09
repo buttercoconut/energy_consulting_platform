@@ -1,14 +1,10 @@
-# app/main.py
 from fastapi import FastAPI
-from . import routers
+from .api.routes import router as api_router
 
 app = FastAPI(title="Energy Consulting Platform API")
 
-# Include routers
-app.include_router(routers.users.router, prefix="/users", tags=["users"])
-app.include_router(routers.energy.router, prefix="/energy", tags=["energy"])
+app.include_router(api_router, prefix="/api")
 
-# Root endpoint
-@app.get("/")
-async def read_root():
-    return {"message": "Welcome to the Energy Consulting Platform API"}
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)

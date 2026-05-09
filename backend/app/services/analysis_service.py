@@ -1,52 +1,22 @@
-"""Core analysis logic: simple linear regression and anomaly detection."""
+import asyncio
+from sqlalchemy.ext.asyncio import AsyncSession
+from ..api.schemas import EnergyDataCreate, EnergyDataResponse
+from ..api.models import EnergyData, Building
+from ..config import settings
+from sqlalchemy.future import select
 
-import pandas as pd
-import numpy as np
-from sklearn.linear_model import LinearRegression
-from datetime import datetime
-from typing import Tuple
+class DataCollectionService:
+    def __init__(self, session: AsyncSession = None):
+        self.session = session or settings.async_session()
 
-# Dummy function to simulate data retrieval
-async def fetch_energy_records(building_id: int, start: str, end: str):
-    # Generate synthetic data for demo
-    rng = pd.date_range(start=start, end=end, freq="H")
-    consumption = np.random.normal(loc=50, scale=10, size=len(rng))
-    df = pd.DataFrame({"timestamp": rng, "energy_kwh": consumption})
-    return df
+    async def save_energy_data(self, data: EnergyDataCreate) -> EnergyDataResponse:
+        energy = EnergyData(**data.dict())
+        self.session.add(energy)
+        await self.session.commit()
+        await self.session.refresh(energy)
+        return EnergyDataResponse.from_orm(energy)
 
-async def analyze_energy_data(building_id: int, start: str, end: str):
-    df = await fetch_energy_records(building_id, start, end)
-    if df.empty:
-        raise ValueError("No data available")
-
-    # Basic statistics
-    avg = df["energy_kwh"].mean()
-    peak = df["energy_kwh"].max()
-
-    # Linear regression on time vs consumption
-    df["hour"] = df["timestamp"].astype(int) / 10**9  # seconds since epoch
-    X = df[["hour"]]
-    y = df["energy_kwh"]
-    model = LinearRegression()
-    model.fit(X, y)
-    trend = model.coef_[0]
-
-    # Anomaly detection: flag if consumption > avg + 2*std
-    std = df["energy_kwh"].std()
-    anomaly = df["energy_kwh"].max() > avg + 2 * std
-
-    recommendation = (
-        "Consider load shifting during peak hours to reduce peak consumption."
-        if anomaly
-        else "Consumption within normal range."
-    )
-
-    return {
-        "building_id": building_id,
-        "period_start": datetime.fromisoformat(start),
-        "period_end": datetime.fromisoformat(end),
-        "avg_consumption": float(avg),
-        "peak_consumption": float(peak),
-        "anomaly_detected": bool(anomaly),
-        "recommendation": recommendation,
-    }
+    async def get_energy_data_by_building(self, building_id: int) -> list[EnergyDataResponse]:
+        result = await self.session.execute(select(EnergyData).where(EnergyData.building_id == building_id))
+        rows = result.scalars().all()
+        return [EnergyDataResponse.from_orm(row) for row in rows]
